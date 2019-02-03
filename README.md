@@ -72,6 +72,10 @@ output of the command.
 
 ## Releases
 
+### v1.0.1
+
+* Added timing and progress messages
+
 ### v1.0.0
 
 Initial release.
