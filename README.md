@@ -75,6 +75,7 @@ output of the command.
 ### v1.0.1
 
 * Added timing and progress messages
+* Added a Ctrl+C interrupted handler
 
 ### v1.0.0
 
