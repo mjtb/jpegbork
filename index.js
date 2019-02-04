@@ -3,6 +3,9 @@ const child_process = require('child_process');
 
 const re = /identify: Corrupt JPEG data:/;
 
+var retry_enoent = true;
+var keep_looping = true;
+
 function corrupt(p) {
 	let ps = child_process.spawnSync('magick', ['identify', '-verbose', p], {
 		stdio: ['ignore', 'ignore', 'pipe'],
@@ -16,8 +19,12 @@ function corrupt(p) {
 
 function doit(fi) {
 	if (fi['ENOENT']) {
-		console.log(`${fi.path}: file not found`);
-		return;
+		if(retry_enoent) {
+			delete fi.ENOENT;
+		} else {
+			console.log(`${fi.path}: file not found`);
+			return;
+		}
 	}
 	let st = null;
 	if (!fi.hasOwnProperty('size') || !fi.hasOwnProperty('mtime')) {
@@ -63,12 +70,13 @@ function main(argv) {
 	}
 	if (n < 1) {
 		console.log(`jpegbork: all ${count} entries have been checked; no more work to do`);
-		let countCorrupt = 0, countNotCorrupt = 0;
-		for(let i = 0; i < count; ++i) {
-			if(arr[i].hasOwnProperty('corrupt')) {
-				if(arr[i].corrupt) {
+		let countCorrupt = 0,
+			countNotCorrupt = 0;
+		for (let i = 0; i < count; ++i) {
+			if (arr[i].hasOwnProperty('corrupt')) {
+				if (arr[i].corrupt) {
 					++countCorrupt;
-					if(countCorrupt == 1) {
+					if (countCorrupt == 1) {
 						console.log('listing corrupted items:');
 					}
 					console.log(`${arr[i].path}`);
@@ -77,13 +85,13 @@ function main(argv) {
 				}
 			}
 		}
-		if(countCorrupt > 0) {
+		if (countCorrupt > 0) {
 			console.log(`${countCorrupt} corrupt items found out ${count} total`);
 		}
 	} else {
 		console.log(`jpegbork: checking entries ${start}..${start+n}, ${n} entries total...`);
 		let startTime = new Date();
-		for (let i = 0; i < n; ++i) {
+		for (let i = 0; keep_looping && (i < n); ++i) {
 			doit(arr[start + i]);
 			if ((i % 10) == 9) {
 				let nowTime = new Date();
@@ -94,10 +102,11 @@ function main(argv) {
 		let endTime = new Date();
 		let diffTime = (endTime.valueOf() - startTime.valueOf()) / 1000.0;
 		console.log(`${n} items processed in ${diffTime} seconds`);
-		let countCorrupt = 0, countNotCorrupt = 0;
-		for(let i = 0; i < count; ++i) {
-			if(arr[i].hasOwnProperty('corrupt')) {
-				if(arr[i].corrupt) {
+		let countCorrupt = 0,
+			countNotCorrupt = 0;
+		for (let i = 0; i < count; ++i) {
+			if (arr[i].hasOwnProperty('corrupt')) {
+				if (arr[i].corrupt) {
 					++countCorrupt;
 				} else {
 					++countNotCorrupt;
@@ -119,6 +128,23 @@ function main(argv) {
 			encoding: 'utf8'
 		});
 	}
+	process.exit(0);
 }
+
+if (process.platform === "win32") {
+	var rl = require("readline").createInterface({
+		input: process.stdin,
+		output: process.stdout
+	});
+
+	rl.on("SIGINT", function () {
+		process.emit("SIGINT");
+	});
+}
+
+process.on("SIGINT", function () {
+	console.error('jpegbork: Ctrl+C caught...');
+	keep_looping = false;
+});
 
 main(process.argv.slice(1));
