@@ -40,7 +40,9 @@ The `db.js` file uses the following schema:
 ```
 
 The _count_ argument gives the number of entries in `db.js` to process
-in the current execution of the script.
+in the current execution of the script. If _count_ is ≤ 0, no files are
+checked and a summary of the current state of the entries in `db.js`
+is printed.
 
 Upon successful execution, the `db.js` file is backed up to `db.js.bak` and
 then overwritten with the computed information.
@@ -76,6 +78,7 @@ output of the command.
 
 * Added timing and progress messages
 * Added a Ctrl+C interrupted handler
+* Added summary when count is less than or equal to zero
 
 ### v1.0.0
 
