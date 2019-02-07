@@ -50,6 +50,10 @@ JpegBork.prototype._start_2 = function (err, data) { // fs.readFile
 	} else {
 		this.files = JSON.parse(data);
 		this.total = this.files.length;
+		if(this.count <= 0) {
+			this._summarize();
+			process.exit(0);
+		}
 		let f = 0;
 		for (f = 0; f < this.total; ++f) {
 			let fi = this.files[f]
@@ -86,6 +90,34 @@ JpegBork.prototype._start_2 = function (err, data) { // fs.readFile
 			console.log(`jpegbork: checking entries ${this.first}..${this.first+this.count}, ${this.count} entries total...`);
 			this._next();
 		}
+	}
+};
+
+JpegBork.prototype._summarize = function() {
+	let corrupted = 0, uncorrupted = 0;
+	for(let i = 0; i < this.total; ++i) {
+		let fi = this.files[i];
+		if (fi.hasOwnProperty('corrupt')) {
+			if(fi.corrupt) {
+				++corrupted;
+			} else {
+				++uncorrupted;
+			}
+		}
+	}
+	if(corrupted > 0) {
+		console.log(`jpegbork: corrupted files found:`);
+		for(let i = 0; i < this.total; ++i) {
+			let fi = this.files[i];
+			if (fi.hasOwnProperty('corrupt')) {
+				if(fi.corrupt) {
+					console.log(`${fi.path}`);
+				}
+			}
+		}
+		console.log(`${corrupted} corrupted files out of ${corrupted+uncorrupted}/${this.total} checked so far`);
+	} else {
+		console.log(`no corrupted files out of ${uncorrupted}/${this.total} checked so far`);
 	}
 };
 
