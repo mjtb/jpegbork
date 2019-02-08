@@ -13,6 +13,7 @@ function JpegBork(argv) {
 	this.total = 0;
 	this.first = 0;
 	this.index = -1;
+	this.processed = -1;
 	this.start_time = new Date();
 	this.interrupted = false;
 }
@@ -57,7 +58,9 @@ JpegBork.prototype._start_2 = function (err, data) { // fs.readFile
 		let f = 0;
 		for (f = 0; f < this.total; ++f) {
 			let fi = this.files[f]
-			if (!fi.hasOwnProperty('corrupt')) {
+			if (fi['ENOENT'] && !retry_enoent) {
+				continue;
+			} else if (!fi.hasOwnProperty('corrupt')) {
 				break;
 			}
 		}
@@ -88,7 +91,8 @@ JpegBork.prototype._start_2 = function (err, data) { // fs.readFile
 			process.exit(0);
 		} else {
 			console.log(`jpegbork: checking entries ${this.first}..${this.first+this.count}, ${this.count} entries total...`);
-			this._next();
+			setImmediate(this._next.bind(this));
+			return;
 		}
 	}
 };
@@ -122,17 +126,24 @@ JpegBork.prototype._summarize = function() {
 };
 
 JpegBork.prototype._next = function () {
+	if ((this.index % 10) == 9) {
+		let sec = ((new Date()).valueOf() - this.start_time.valueOf()) / 1000.0;
+		console.log(`${this.processed+1} of ${this.count} items processed in ${sec} seconds`);
+	}
 	++this.index;
-	if (this.interrupted || (this.index >= this.count)) {
-		return this._last();
+	++this.processed;
+	if (this.interrupted || (this.index >= this.total) || (this.processed >= this.count)) {
+		setImmediate(this._last.bind(this));
+		return;
 	}
 	let fi = this.files[this.first + this.index];
 	if (fi['ENOENT']) {
 		if (retry_enoent) {
 			delete fi.ENOENT;
 		} else {
-			console.log(`${fi.path}: file not found`);
-			return this._next();
+			console.log(`${fi.path}: file previously not found`);
+			setImmediate(this._next.bind(this));
+			return;
 		}
 	}
 	if (!fi.hasOwnProperty('size') || !fi.hasOwnProperty('mtime')) {
@@ -140,41 +151,48 @@ JpegBork.prototype._next = function () {
 			fs.stat(fi.path, {}, this._next_2.bind(this));
 		} catch (err) {
 			fi.ENOENT = true;
-			console.log(`${fi.path}: file not found`);
-			return this._next();
+			console.log(`${fi.path}: file could not be found`);
+			setImmediate(this._next.bind(this));
+			return;
 		}
 	} else {
-		return this._next_3(fi);
+		setImmediate(this._next_3.bind(this), fi);
+		return;
 	}
 };
 
 JpegBork.prototype._next_2 = function (err, st) { // fs.stat(fi.path, ...)
 	if(this.interrupted) {
-		return this._last();
+		setImmediate(this._last.bind(this));
+		return;
 	}
 	let fi = this.files[this.first + this.index];
 	if (err) {
 		fi.ENOENT = true;
-		console.log(`${fi.path}: file not found`);
-		return this._next();
-	}
+		console.log(`${fi.path}: file is presently not found`);
+		setImmediate(this._next.bind(this));
+		return;
+}
 	if (!fi.hasOwnProperty('size')) {
 		fi.size = st.size;
 	}
 	if (!fi.hasOwnProperty('mtime')) {
 		fi.mtime = st.mtimeMs;
 	}
-	return this._next_3(fi);
+	setImmediate(this._next_3.bind(this), fi);
+	return;
 };
 
 JpegBork.prototype._next_3 = function (fi) {
 	if(this.interrupted) {
-		return this._last();
+		setImmediate(this._last.bind(this));
+		return;
 	}
 	if (!fi.hasOwnProperty('corrupt')) {
-		return this._is_corrupt(fi, this._next_4.bind(this));
+		this._is_corrupt(fi, this._next_4.bind(this));
 	} else {
-		return this._next();
+		setImmediate(this._next.bind(this));
+		return;
 	}
 };
 
@@ -186,32 +204,34 @@ JpegBork.prototype._is_corrupt = function (fi, callback) { // callback(fi)
 			encoding: 'utf8'
 		});
 	} catch(err) {
-		return callback(err, fi);
+		setImmediate(callback, err, fi);
+		return;
 	}
 	if(!ps) {
-		return callback(new Error('child_process.spawnSync returned null'), fi);
+		setImmediate(callbac, new Error('child_process.spawnSync returned null'), fi);
+		return;
 	} else if(ps.error) {
-		return callback(ps.error, fi);
+		setImmediate(callback, ps.error, fi);
+		return;
 	} else {
 		fi.corrupt = re.test(ps.stderr);
-		return callback(null, fi);
+		setImmediate(callback, null, fi);
+		return;
 	}
 };
 
 JpegBork.prototype._next_4 = function (err, fi) { // this.corrupt(fi, ...)
 	if(err) {
 		console.error(util.inspect(err));
-		return this._next();
+		setImmediate(this._next.bind(this));
+		return;
 	} else if (fi.corrupt) {
 		console.log(`${fi.path}: corrupted`);
 	} else {
 		console.log(`${fi.path}: OK`);
 	}
-	if ((this.index % 10) == 9) {
-		let sec = ((new Date()).valueOf() - this.start_time.valueOf()) / 1000.0;
-		console.log(`${this.index+1} of ${this.count} items processed in ${sec} seconds`);
-	}
-	return this._next();
+	setImmediate(this._next.bind(this));
+	return;
 };
 
 JpegBork.prototype._last = function () {
@@ -242,7 +262,8 @@ JpegBork.prototype._last_2 = function (err, st) { // fs.stat(this.bakfile, ...)
 	if (!err && st && st.isFile()) {
 		return fs.unlink(this.bakfile, this._last_3.bind(this));
 	} else {
-		return this._last_3(null);
+		setImmediate(this._last_3.bind(this), null);
+		return;
 	}
 };
 
